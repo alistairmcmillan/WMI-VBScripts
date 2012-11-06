@@ -16,4 +16,4 @@ Gives you a list of all the running processes on a remote machine including how 
 Check Size of Queries Folder
 ----------------------------
 
-Identifies which user profiles have Microsoft Queries folders and what size they are. This is to deal with a specific Excel bug we encountered.
+Identifies which user profiles have Microsoft Queries folders and what size they are. This is to deal with a [specific Excel bug](http://alistairmcmillan.tumblr.com/post/7627301133/favourite-microsoft-bug-of-2009) we encountered.
