@@ -1,9 +1,11 @@
-' Remote Processes Dump
 ' Author: Alistair McMillan
 ' Start Date: 31 October 2012
-' -----------------------------------------------' 
+' -----------------------------------------------
+
 Option Explicit
-Dim strComputer, strFilename, objFileSystem, objFile, objSWbemLocator, objSWbemServices, colItems, objItem, strMachineName
+
+Dim strComputer, strFilename, objFileSystem, objFile, objSWbemLocator, _
+	objSWbemServices, colItems, objItem, strMachineName
 
 strComputer = InputBox("Enter full computer name (i.e. SWSA40115) or IP address")
 
@@ -37,4 +39,4 @@ set objFileSystem = NOTHING
 
 Wscript.Echo "DONE. Created " & strFilename
 
-WSCript.Quit
+Wscript.Quit
