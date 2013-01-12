@@ -9,34 +9,42 @@ Dim strComputer, strFilename, objFileSystem, objFile, objSWbemLocator, _
 
 strComputer = InputBox("Enter full computer name (i.e. SWSA40115) or IP address")
 
-Set objFileSystem = CreateObject("Scripting.FileSystemObject")
+If (IsNull(strComputer) Or IsEmpty(strComputer) Or Len(strComputer) < 1) Then
 
-Set objSWbemLocator = CreateObject("WbemScripting.SWbemLocator")
-Set objSWbemServices = GetObject( "winmgmts://" & strComputer & "/root/cimv2" )
-objSWbemServices.Security_.ImpersonationLevel = 3
+	Wscript.Echo "Can't continue without a machine name or IP address."
 
-' Basic info
-Set colItems = objSWbemServices.ExecQuery("select * from Win32_ComputerSystem")
-For Each objItem in colItems
-	strMachineName = objItem.Name
-Next
+Else
 
-strFilename = strMachineName + ".csv"
-Set objFile = objFileSystem.OpenTextFile(strFilename, 8, True)
+	Set objFileSystem = CreateObject("Scripting.FileSystemObject")
+	
+	Set objSWbemLocator = CreateObject("WbemScripting.SWbemLocator")
+	Set objSWbemServices = GetObject( "winmgmts://" & strComputer & "/root/cimv2" )
+	objSWbemServices.Security_.ImpersonationLevel = 3
+	
+	' Basic info
+	Set colItems = objSWbemServices.ExecQuery("select * from Win32_ComputerSystem")
+	For Each objItem in colItems
+		strMachineName = objItem.Name
+	Next
+	
+	strFilename = strMachineName + ".csv"
+	Set objFile = objFileSystem.OpenTextFile(strFilename, 8, True)
+	
+	' RAM
+	objFile.WriteLine("MACHINE, PROCESS ID, PROCESS NAME, WORKING SET (MB), PAGE FILE USAGE (MB), COMMAND")
+	
+	Set colItems = objSWbemServices.ExecQuery("select * from Win32_Process")
+	For Each objItem in colItems
+		objFile.WriteLine(strMachineName & ", " & objItem.ProcessId  & ", " & objItem.Name& ", " & Round(objItem.WorkingSetSize/1024/1024, 2) & ", " & Round(objItem.PageFileUsage/1024/1024, 2) & ", " & objItem.CommandLine )
+	Next
+	
+	objFile.Close
+	
+	set objFile = NOTHING
+	set objFileSystem = NOTHING
+	
+	Wscript.Echo "DONE. Created " & strFilename
 
-' RAM
-objFile.WriteLine("MACHINE, PROCESS ID, PROCESS NAME, WORKING SET (MB), PAGE FILE USAGE (MB), COMMAND")
-
-Set colItems = objSWbemServices.ExecQuery("select * from Win32_Process")
-For Each objItem in colItems
-	objFile.WriteLine(strMachineName & ", " & objItem.ProcessId  & ", " & objItem.Name& ", " & Round(objItem.WorkingSetSize/1024/1024, 2) & ", " & Round(objItem.PageFileUsage/1024/1024, 2) & ", " & objItem.CommandLine )
-Next
-
-objFile.Close
-
-set objFile = NOTHING
-set objFileSystem = NOTHING
-
-Wscript.Echo "DONE. Created " & strFilename
-
+End If
+	
 Wscript.Quit
