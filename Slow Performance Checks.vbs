@@ -1,17 +1,30 @@
+' Slow Performance Checks.vbs
 ' Author: Alistair McMillan
 ' Start Date: 12 November 2012
-' -----------------------------------------------
+' ----------------------------
+'
+' 0.2 - 21 January 2013
+' - Added systemprofile to Temp and Temporary Internet Files checks
+' - Added listing of items under Registry Run keys
+'
 
 Option Explicit
 
-Const HKEY_LOCAL_MACHINE = &H80000002 'HKEY_LOCAL_MACHINE
+Const HKEY_LOCAL_MACHINE = &H80000002
+Const HKEY_CURRENT_USER = &H80000001
+const REG_SZ = 1
+const REG_EXPAND_SZ = 2
+const REG_BINARY = 3
+const REG_DWORD = 4
+const REG_MULTI_SZ = 7
 
 Dim freePhysicalMemory, objSWbemLocator, objSWbemServices, objItem, colOSItems, _
 	colItems, strComputer, WshShell, freeSpaceInPagingFiles, sizeStoredInPagingFiles, _
 	strFilename, objFileSystem, objFile, strMachineName, objFSO, _
 	objFolder, objSubFolders, objSubFolder, queriesFolder, objRegistry, _
 	values, strValue, strValues, strKeyPath, strValueName, SchTasksCommand, _
-	oExec, Line, servicePackeMajor, servicePackMinor
+	oExec, Line, servicePackeMajor, servicePackMinor, arrValueNames, arrValueTypes, _
+	index
 
 Set WshShell = CreateObject("WScript.Shell")
 
@@ -128,7 +141,7 @@ Else
 	SchTasksCommand = "schtasks /query /v /FO TABLE /s " & strMachineName
 	Set oExec = WshShell.Exec(SchTasksCommand)
 
-	On Error Resume Next
+'	On Error Resume Next
 	Do While oExec.StdOut.AtEndOfStream <> True
 		Line = oExec.StdOut.ReadLine
 		If Not IsNull(Line) Then
@@ -136,6 +149,56 @@ Else
 		End If
 	Loop
 
+	objFile.WriteLine("")
+	
+	objFile.WriteLine("MACHINE STARTUP ITEMS")
+	objFile.WriteLine("---------------------")
+
+	Set objRegistry = GetObject("winmgmts:\\" & strComputer & "\root\default:StdRegProv")
+	strKeyPath = "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
+	objRegistry.EnumValues HKEY_LOCAL_MACHINE, strKeyPath, arrValueNames, arrValueTypes
+	For index=0 To UBound(arrValueNames)
+		Select Case arrValueTypes(index)
+			Case REG_SZ
+				objRegistry.GetStringValue HKEY_LOCAL_MACHINE, strKeyPath, arrValueNames(index), strValue
+				objFile.WriteLine arrValueNames(index) & ",  " & strValue
+			Case REG_EXPAND_SZ
+				objRegistry.GetStringValue HKEY_LOCAL_MACHINE, strKeyPath, arrValueNames(index), strValue
+				objFile.WriteLine arrValueNames(index) & ",  " & strValue
+			Case REG_BINARY
+				' Should never reach here
+			Case REG_DWORD
+				' Should never reach here
+			Case REG_MULTI_SZ
+				' Should never reach here
+		End Select 
+	Next	
+	
+	objFile.WriteLine("")
+	
+	objFile.WriteLine("USER STARTUP ITEMS")
+	objFile.WriteLine("------------------")
+
+	Set objRegistry = GetObject("winmgmts:\\" & strComputer & "\root\default:StdRegProv")
+	strKeyPath = "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
+	objRegistry.EnumValues HKEY_CURRENT_USER, strKeyPath, arrValueNames, arrValueTypes
+	For index=0 To UBound(arrValueNames)
+		Select Case arrValueTypes(index)
+			Case REG_SZ
+				objRegistry.GetStringValue HKEY_CURRENT_USER, strKeyPath, arrValueNames(index), strValue
+				objFile.WriteLine arrValueNames(index) & ",  " & strValue
+			Case REG_EXPAND_SZ
+				objRegistry.GetStringValue HKEY_CURRENT_USER, strKeyPath, arrValueNames(index), strValue
+				objFile.WriteLine arrValueNames(index) & ",  " & strValue
+			Case REG_BINARY
+				' Should never reach here
+			Case REG_DWORD
+				' Should never reach here
+			Case REG_MULTI_SZ
+				' Should never reach here
+		End Select 
+	Next	
+	
 	objFile.WriteLine("")
 
 	objFile.WriteLine("TEMP FOLDERS")
@@ -148,6 +211,7 @@ Else
 		objFile.Write(Round(queriesFolder.Size/1024/1024, 1))
 		objFile.Write(", <" & queriesFolder.Path & ">")
 		objFile.WriteLine(" ")
+		On Error Goto 0
 	End If
 
 	If objFileSystem.FolderExists("\\" & strComputer & "\c$\temp") Then
@@ -156,6 +220,16 @@ Else
 		objFile.Write(Round(queriesFolder.Size/1024/1024, 1))
 		objFile.Write(", <" & queriesFolder.Path & ">")
 		objFile.WriteLine(" ")
+		On Error Goto 0
+	End If
+
+	If objFileSystem.FolderExists("\\" & strComputer & "\c$\windows\system32\config\systemprofile\local settings\temp") Then
+		Set queriesFolder = objFileSystem.GetFolder("\\" & strComputer & "\c$\windows\system32\config\systemprofile\local settings\temp")
+		On Error Resume Next
+		objFile.Write(Round(queriesFolder.Size/1024/1024, 1))
+		objFile.Write(", <" & queriesFolder.Path & ">")
+		objFile.WriteLine(" ")
+		On Error Goto 0
 	End If
 
 	Set objFolder = objFileSystem.GetFolder("\\" & strComputer & "\C$\documents and settings")
@@ -167,6 +241,7 @@ Else
 			objFile.Write(Round(queriesFolder.Size/1024/1024, 1))
 			objFile.Write(", <" & queriesFolder.Path & ">")
 			objFile.WriteLine(" ")
+			On Error Goto 0
 		End If
 	Next
 
@@ -175,6 +250,15 @@ Else
 	objFile.WriteLine("TEMPORARY INTERNET FOLDERS")
 	objFile.WriteLine("--------------------------")
 	objFile.WriteLine("FOLDER SIZE (MB), FOLDER NAME")
+
+	If objFileSystem.FolderExists("\\" & strComputer & "\c$\windows\system32\config\systemprofile\local settings\temporary internet files") Then
+		Set queriesFolder = objFileSystem.GetFolder("\\" & strComputer & "\c$\windows\system32\config\systemprofile\local settings\temporary internet files")
+		On Error Resume Next
+		objFile.Write(Round(queriesFolder.Size/1024/1024, 1))
+		objFile.Write(", <" & queriesFolder.Path & ">")
+		objFile.WriteLine(" ")
+		On Error Goto 0
+	End If
 
 	Set objFolder = objFileSystem.GetFolder("\\" & strComputer & "\C$\documents and settings")
 	Set objSubFolders = objFolder.SubFolders
@@ -185,6 +269,7 @@ Else
 			objFile.Write(Round(queriesFolder.Size/1024/1024, 1))
 			objFile.Write(", <" & queriesFolder.Path & ">")
 			objFile.WriteLine(" ")
+			On Error Goto 0
 		End If
 	Next
 
@@ -203,11 +288,10 @@ Else
 			objFile.Write(Round(queriesFolder.Size/1024/1024, 1))
 			objFile.Write(", <" & queriesFolder.Path & ">")
 			objFile.WriteLine(" ")
+			On Error Goto 0
 		End If
 	Next
-
-	'Wscript.Echo "Finished writing " + strFilename
-
+	
 	SchTasksCommand = "notepad.exe " & strFilename
 	WshShell.Exec(SchTasksCommand)
 
