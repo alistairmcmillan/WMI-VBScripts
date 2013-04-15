@@ -1,7 +1,7 @@
 ' Slow Performance Checks.vbs
 ' Author: Alistair McMillan
 ' Start Date: 12 November 2012
-' Version 2.1
+' Version 2.1.1
 ' ----------------------------
 
 Option Explicit
@@ -23,6 +23,20 @@ Dim freePhysicalMemory, objSWbemLocator, objSWbemServices, objItem, colOSItems, 
 	index, strOperatingSystem, strServiceParkMajor, strServiceParkMinor, strCurrentUser, _
 	hasQueriesProblem, tempFolderTotal, temporaryInternetFolderTotal, queriesFolderTotal, _
 	boolRemoteStartupItem, DataList
+
+Function PadNumbers(input)
+	Dim output
+	If (input < 1000) Then
+		output = output & " "
+	End If
+	If (input < 100) Then
+		output = output & " "
+	End If
+	If (input < 10) Then
+		output = output & " "
+	End If
+	PadNumbers = output
+End Function
 
 Set WshShell = CreateObject("WScript.Shell")
 
@@ -141,14 +155,14 @@ Else
 				Else
 					objFile.Write("[  ] ")
 				End If
-				objFile.WriteLine(objItem.Name & " " & objItem.FreeSpace/objItem.Size & " % - Total/Free Space: " & objItem.Size/1024/1024/1024 & " GB / " & objItem.FreeSpace/1024/1024/1024 & " GB")
+				objFile.WriteLine(objItem.Name & " " & objItem.FreeSpace/objItem.Size & " % FREE - Total/Free Space: " & objItem.Size/1024/1024/1024 & " GB / " & objItem.FreeSpace/1024/1024/1024 & " GB")
 			else
 				If (Round((objItem.FreeSpace/objItem.Size)*100, 1) < 10) Then
 					objFile.Write("[!!] ")
 				Else
 					objFile.Write("[  ] ")
 				End If
-				objFile.WriteLine(objItem.Name & " " & Round((objItem.FreeSpace/objItem.Size)*100, 1) & " % - " & " Total/Free Space: " & Round(objItem.Size/1024/1024/1024, 2) & " GB / " & Round(objItem.FreeSpace/1024/1024/1024, 2) & " GB ")
+				objFile.WriteLine(objItem.Name & " " & Round((objItem.FreeSpace/objItem.Size)*100, 1) & " % FREE - " & " Total/Free Space: " & Round(objItem.Size/1024/1024/1024, 2) & " GB / " & Round(objItem.FreeSpace/1024/1024/1024, 2) & " GB ")
 			End If
 		End If
 	Next
@@ -163,11 +177,12 @@ Else
 	objFile.WriteLine(vbTab & " SET (MB), USAGE (MB), NAME         , COMMAND")
 	
 	' Creating disconnected recordset to hold data
+	Const adDouble = 5
 	Const adVarChar = 200
-	Const MaxCharacters = 255
+	Const MaxCharacters = 511
 	Set DataList = CreateObject("ADOR.Recordset")
-	DataList.Fields.Append "WorkingSetSize", adVarChar, MaxCharacters
-	DataList.Fields.Append "PageFileUsage", adVarChar, MaxCharacters
+	DataList.Fields.Append "WorkingSetSize", adDouble, MaxCharacters
+	DataList.Fields.Append "PageFileUsage", adDouble, MaxCharacters
 	DataList.Fields.Append "Name", adVarChar, MaxCharacters
 	DataList.Fields.Append "CommandLine", adVarChar, MaxCharacters
 	DataList.Open
@@ -176,68 +191,30 @@ Else
 	Set colItems = objSWbemServices.ExecQuery("select * from Win32_Process")
 	For Each objItem in colItems
 		DataList.AddNew
-		DataList("WorkingSetSize") = objItem.WorkingSetSize
-		DataList("PageFileUsage") = objItem.PageFileUsage
+		DataList("WorkingSetSize") = CDbl(objItem.WorkingSetSize)
+		DataList("PageFileUsage") = CDbl(objItem.PageFileUsage)
 		DataList("Name") = objItem.Name
 		' Because command line can sometimes be null and recordsets don't like null values
-	'	If (IsNull(objItem.CommandLine)) Then
-	'		DataList("CommandLine") = "-"
-	'	Else
-	'		DataList("CommandLine") = objItem.CommandLine
-	'	End If
+		If (IsNull(objItem.CommandLine)) Then
+			DataList("CommandLine") = "-"
+		Else
+			DataList("CommandLine") = objItem.CommandLine
+		End If
 		DataList.Update
 	Next
-	DataList.Sort = "WorkingSetSize DESC"
+	DataList.Sort = "PageFileUsage DESC"
 	DataList.MoveFirst
 	Do Until DataList.EOF
 		objFile.Write("[  ]  ")
-		If (Round(DataList.Fields.Item("WorkingSetSize")/1024/1024, 2) < 1000) Then
-			objFile.Write(" ")
-		End If
-		If (Round(DataList.Fields.Item("WorkingSetSize")/1024/1024, 2) < 100) Then
-			objFile.Write(" ")
-		End If
-		If (Round(DataList.Fields.Item("WorkingSetSize")/1024/1024, 2) < 10) Then
-			objFile.Write(" ")
-		End If
+
+		objFile.Write(PadNumbers(Round(DataList.Fields.Item("WorkingSetSize")/1024/1024, 2)))
 		objFile.Write(FormatNumber(Round(DataList.Fields.Item("WorkingSetSize")/1024/1024, 2), 2, -1))
 		objFile.Write(",    ")
-		If (Round(DataList.Fields.Item("PageFileUsage")/1024/1024, 2) < 1000) Then
-			objFile.Write(" ")
-		End If
-		If (Round(DataList.Fields.Item("PageFileUsage")/1024/1024, 2) < 100) Then
-			objFile.Write(" ")
-		End If
-		If (Round(DataList.Fields.Item("PageFileUsage")/1024/1024, 2) < 10) Then
-			objFile.Write(" ")
-		End If
+
+		objFile.Write(PadNumbers(Round(DataList.Fields.Item("PageFileUsage")/1024/1024, 2)))
 		objFile.WriteLine(FormatNumber(Round(DataList.Fields.Item("PageFileUsage")/1024/1024, 2), 2, -1) & ", " & DataList.Fields.Item("Name") & ", " & DataList.Fields.Item("CommandLine") )
 		DataList.MoveNext
 	Loop
-'	For Each objItem in colItems
-'		objFile.Write("[  ]  ")
-'		If (Round(objItem.WorkingSetSize/1024/1024, 2) < 1000) Then
-'			objFile.Write(" ")
-'		End If
-'		If (Round(objItem.WorkingSetSize/1024/1024, 2) < 100) Then
-'			objFile.Write(" ")
-'		End If
-'		If (Round(objItem.WorkingSetSize/1024/1024, 2) < 10) Then
-'			objFile.Write(" ")
-'		End If
-'		objFile.Write(FormatNumber(Round(objItem.WorkingSetSize/1024/1024, 2), 2, -1))
-'		objFile.Write(",    ")
-'		If (Round(objItem.PageFileUsage/1024/1024, 2) < 1000) Then
-'			objFile.Write(" ")
-'		End If
-'		If (Round(objItem.PageFileUsage/1024/1024, 2) < 100) Then
-'			objFile.Write(" ")
-'		End If
-'		If (Round(objItem.PageFileUsage/1024/1024, 2) < 10) Then
-'			objFile.Write(" ")
-'		End If
-'		objFile.WriteLine(FormatNumber(Round(objItem.PageFileUsage/1024/1024, 2), 2, -1) & ", " & objItem.Name & ", " & objItem.CommandLine )
-'	Next
 	
 	objFile.WriteLine("")
 
@@ -345,7 +322,7 @@ Else
 		Set queriesFolder = objFileSystem.GetFolder("\\" & strComputer & "\c$\windows\temp")
 		On Error Resume Next
 		tempFolderTotal = tempFolderTotal + Round(queriesFolder.Size/1024/1024, 1)
-		objFile.WriteLine("[  ] " & Round(queriesFolder.Size/1024/1024, 1) & "MB, <" & queriesFolder.Path & ">")
+		objFile.WriteLine("[  ] " & PadNumbers(Round(queriesFolder.Size/1024/1024, 1)) & FormatNumber(Round(queriesFolder.Size/1024/1024, 1), 2, -1) & "MB, <" & queriesFolder.Path & ">")
 		On Error Goto 0
 	End If
 
@@ -353,7 +330,7 @@ Else
 		Set queriesFolder = objFileSystem.GetFolder("\\" & strComputer & "\c$\temp")
 		On Error Resume Next
 		tempFolderTotal = tempFolderTotal + Round(queriesFolder.Size/1024/1024, 1)
-		objFile.WriteLine("[  ] " & Round(queriesFolder.Size/1024/1024, 1) & "MB, <" & queriesFolder.Path & ">")
+		objFile.WriteLine("[  ] " & PadNumbers(Round(queriesFolder.Size/1024/1024, 1)) & FormatNumber(Round(queriesFolder.Size/1024/1024, 1), 2, -1) & "MB, <" & queriesFolder.Path & ">")
 		On Error Goto 0
 	End If
 
@@ -361,7 +338,7 @@ Else
 		Set queriesFolder = objFileSystem.GetFolder("\\" & strComputer & "\c$\windows\system32\config\systemprofile\local settings\temp")
 		On Error Resume Next
 		tempFolderTotal = tempFolderTotal + Round(queriesFolder.Size/1024/1024, 1)
-		objFile.WriteLine("[  ] " & Round(queriesFolder.Size/1024/1024, 1) & "MB, <" & queriesFolder.Path & ">")
+		objFile.WriteLine("[  ] " & PadNumbers(Round(queriesFolder.Size/1024/1024, 1)) & FormatNumber(Round(queriesFolder.Size/1024/1024, 1), 2, -1) & "MB, <" & queriesFolder.Path & ">")
 		On Error Goto 0
 	End If
 
@@ -372,15 +349,15 @@ Else
 			Set queriesFolder = objFileSystem.GetFolder("\\" & strComputer & "\c$\documents and settings\" & objSubFolder.name & "\local settings\temp")
 			On Error Resume Next
 			tempFolderTotal = tempFolderTotal + Round(queriesFolder.Size/1024/1024, 1)
-			objFile.WriteLine("[  ] " & Round(queriesFolder.Size/1024/1024, 1) & "MB, <" & queriesFolder.Path & ">")
+			objFile.WriteLine("[  ] " & PadNumbers(Round(queriesFolder.Size/1024/1024, 1)) & FormatNumber(Round(queriesFolder.Size/1024/1024, 1), 2, -1) & "MB, <" & queriesFolder.Path & ">")
 			On Error Goto 0
 		End If
 	Next
 
 	If (tempFolderTotal > 1024) Then
-		objFile.WriteLine("[!!] " & tempFolderTotal & "MB in Temp Folders - they should be checked and cleared")
+		objFile.WriteLine("[!!] " & PadNumbers(tempFolderTotal) & FormatNumber(tempFolderTotal, 2, -1) & "MB in Temp Folders - they should be checked and cleared")
 	Else
-		objFile.WriteLine("[  ] " & tempFolderTotal & "MB in Temp Folders - OK")
+		objFile.WriteLine("[  ] " & PadNumbers(tempFolderTotal) & FormatNumber(tempFolderTotal, 2, -1) & "MB in Temp Folders")
 	End If
 		
 	objFile.WriteLine("")
@@ -393,7 +370,7 @@ Else
 		Set queriesFolder = objFileSystem.GetFolder("\\" & strComputer & "\c$\windows\system32\config\systemprofile\local settings\temporary internet files")
 		On Error Resume Next
 		temporaryInternetFolderTotal = temporaryInternetFolderTotal + Round(queriesFolder.Size/1024/1024, 1)
-		objFile.WriteLine("[  ] " & Round(queriesFolder.Size/1024/1024, 1) & "MB, <" & queriesFolder.Path & ">")
+		objFile.WriteLine("[  ] " & PadNumbers(Round(queriesFolder.Size/1024/1024, 1)) & FormatNumber(Round(queriesFolder.Size/1024/1024, 1), 2, -1) & "MB, <" & queriesFolder.Path & ">")
 		On Error Goto 0
 	End If
 
@@ -404,15 +381,15 @@ Else
 			Set queriesFolder = objFileSystem.GetFolder("\\" & strComputer & "\c$\documents and settings\" & objSubFolder.name & "\local settings\temporary internet files")
 			On Error Resume Next
 			temporaryInternetFolderTotal = temporaryInternetFolderTotal + Round(queriesFolder.Size/1024/1024, 1)
-			objFile.WriteLine("[  ] " & Round(queriesFolder.Size/1024/1024, 1) & "MB, <" & queriesFolder.Path & ">")
+			objFile.WriteLine("[  ] " & PadNumbers(Round(queriesFolder.Size/1024/1024, 1)) & FormatNumber(Round(queriesFolder.Size/1024/1024, 1), 2, -1) & "MB, <" & queriesFolder.Path & ">")
 			On Error Goto 0
 		End If
 	Next
 
 	If (temporaryInternetFolderTotal > 1024) Then
-		objFile.WriteLine("[!!] " & temporaryInternetFolderTotal & "MB in Temporary Internet Folders - they should be checked and cleared")
+		objFile.WriteLine("[!!] " & PadNumbers(temporaryInternetFolderTotal) & FormatNumber(temporaryInternetFolderTotal, 2, -1) & "MB in Temporary Internet Folders - they should be checked and cleared")
 	Else
-		objFile.WriteLine("[  ] " & temporaryInternetFolderTotal & "MB in Temporary Internet Folders - OK")
+		objFile.WriteLine("[!!] " & PadNumbers(temporaryInternetFolderTotal) & FormatNumber(temporaryInternetFolderTotal, 2, -1) & "MB in Temporary Internet Folders")
 	End If
 		
 	objFile.WriteLine("")
@@ -431,15 +408,18 @@ Else
 			If (Round(queriesFolder.Size/1024/1024, 1) > 1) Then
 				hasQueriesProblem = True
 			End If
-			objFile.WriteLine("[  ] " & Round(queriesFolder.Size/1024/1024, 1) & "MB, <" & queriesFolder.Path & ">")
+			objFile.WriteLine("[  ] " & PadNumbers(Round(queriesFolder.Size/1024/1024, 1)) & FormatNumber(Round(queriesFolder.Size/1024/1024, 1), 2, -1) & "MB, <" & queriesFolder.Path & ">")
+'			objFile.WriteLine("[  ] " & Round(queriesFolder.Size/1024/1024, 1) & "MB, <" & queriesFolder.Path & ">")
 			On Error Goto 0
 		End If
 	Next
 	
 	If (hasQueriesProblem) Then
-		objFile.WriteLine("[!!] " & queriesFolderTotal & "MB TOTAL - folders should be cleared and Excel fix may need to be applied")
+		objFile.WriteLine("[!!] " & PadNumbers(Round(queriesFolder.Size/1024/1024, 1)) & FormatNumber(Round(queriesFolder.Size/1024/1024, 1), 2, -1) & "MB TOTAL - folders should be cleared and Excel fix may need to be applied")
+'		objFile.WriteLine("[!!] " & queriesFolderTotal & "MB TOTAL - folders should be cleared and Excel fix may need to be applied")
 	Else
-		objFile.WriteLine("[  ] " & queriesFolderTotal & "MB TOTAL")
+		objFile.WriteLine("[  ] " & PadNumbers(Round(queriesFolder.Size/1024/1024, 1)) & FormatNumber(Round(queriesFolder.Size/1024/1024, 1), 2, -1) & "MB TOTAL")
+'		objFile.WriteLine("[  ] " & queriesFolderTotal & "MB TOTAL")
 	End If
 		
 	SchTasksCommand = "notepad.exe " & strFilename
