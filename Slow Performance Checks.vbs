@@ -1,7 +1,7 @@
 ' Slow Performance Checks.vbs
 ' Author: Alistair McMillan
 ' Start Date: 12 November 2012
-' Version 2.1.2
+' Version 2.2
 ' ----------------------------
 
 Option Explicit
@@ -22,7 +22,8 @@ Dim freePhysicalMemory, objSWbemLocator, objSWbemServices, objItem, colOSItems, 
 	oExec, Line, servicePackeMajor, servicePackMinor, arrValueNames, arrValueTypes, _
 	index, strOperatingSystem, strServiceParkMajor, strServiceParkMinor, strCurrentUser, _
 	hasQueriesProblem, tempFolderTotal, temporaryInternetFolderTotal, queriesFolderTotal, _
-	boolRemoteStartupItem, DataList, strOutput
+	boolRemoteStartupItem, boolTempFoldersProblem, boolTempInternetFoldersProblem, _
+	boolServicePackMissing, DataList, strOutput
 
 Function PadNumbers(input)
 	Dim output
@@ -90,8 +91,10 @@ Else
 
 		objFile.WriteLine("[  ] Operating System: " & strOperatingSystem)
 		If ((strOperatingSystem = "Microsoft Windows XP Professional") And (strServiceParkMajor < 3)) Then
+			boolServicePackMissing = True
 			objFile.WriteLine("[!!] Service Pack: " & strServiceParkMajor & "." & strServiceParkMinor)
 		ElseIf ((strOperatingSystem = "Microsoft Windows 2000 Professional") And (strServiceParkMajor < 4)) Then
+			boolServicePackMissing = True
 			objFile.WriteLine("[!!] Service Pack: " & strServiceParkMajor & "." & strServiceParkMinor)
 		Else
 			objFile.WriteLine("[  ] Service Pack: " & strServiceParkMajor & "." & strServiceParkMinor)
@@ -220,18 +223,19 @@ Else
 	Loop
 	
 	objFile.WriteLine("")
-
+	
 	objFile.WriteLine("SCHEDULED TASKS")
 	objFile.WriteLine("---------------")
+	objFile.WriteLine("")
 
-	SchTasksCommand = "schtasks /query /v /FO TABLE /s " & strMachineName
+	SchTasksCommand = "schtasks /query /V /FO TABLE /s " & strMachineName
 	Set oExec = WshShell.Exec(SchTasksCommand)
-
-'	On Error Resume Next
+	
+	'	On Error Resume Next
 	Do While oExec.StdOut.AtEndOfStream <> True
 		Line = oExec.StdOut.ReadLine
-		If Not IsNull(Line) Then
-			objFile.WriteLine(Line)
+		If Not IsNull(Line) And (Len(Line) > 0) Then
+			objFile.WriteLine("[  ] " & Line)
 		End If
 	Loop
 
@@ -345,7 +349,7 @@ Else
 		On Error Goto 0
 	End If
 
-	Set objFolder = objFileSystem.GetFolder("\\" & strComputer & "\C$\documents and settings")
+	Set objFolder = objFileSystem.GetFolder("\\" & strComputer & "\c$\documents and settings")
 	Set objSubFolders = objFolder.SubFolders
 	For Each objSubFolder in objSubFolders
 		If objFileSystem.FolderExists("\\" & strComputer & "\c$\documents and settings\" & objSubFolder.name & "\local settings\temp") Then
@@ -358,10 +362,12 @@ Else
 	Next
 
 	If (tempFolderTotal > 1024) Then
-		objFile.WriteLine("[!!] " & PadNumbers(tempFolderTotal) & FormatNumber(tempFolderTotal, 2, -1) & "MB in Temp Folders - they should be checked and cleared")
+		boolTempProblem = True
+		objFile.Write("[!!] ")
 	Else
-		objFile.WriteLine("[  ] " & PadNumbers(tempFolderTotal) & FormatNumber(tempFolderTotal, 2, -1) & "MB in Temp Folders")
+		objFile.Write("[  ] ")
 	End If
+	objFile.WriteLine(PadNumbers(tempFolderTotal) & FormatNumber(tempFolderTotal, 2, -1) & "MB TOTAL")
 		
 	objFile.WriteLine("")
 
@@ -390,10 +396,12 @@ Else
 	Next
 
 	If (temporaryInternetFolderTotal > 1024) Then
-		objFile.WriteLine("[!!] " & PadNumbers(temporaryInternetFolderTotal) & FormatNumber(temporaryInternetFolderTotal, 2, -1) & "MB in Temporary Internet Folders - they should be checked and cleared")
+		boolTempInternetFoldersProblem = True
+		objFile.Write("[!!] ")
 	Else
-		objFile.WriteLine("[  ] " & PadNumbers(temporaryInternetFolderTotal) & FormatNumber(temporaryInternetFolderTotal, 2, -1) & "MB in Temporary Internet Folders")
+		objFile.Write("[  ] ")
 	End If
+	objFile.WriteLine(PadNumbers(temporaryInternetFolderTotal) & FormatNumber(temporaryInternetFolderTotal, 2, -1) & "MB TOTAL")
 		
 	objFile.WriteLine("")
 
@@ -412,17 +420,35 @@ Else
 				hasQueriesProblem = True
 			End If
 			objFile.WriteLine("[  ] " & PadNumbers(Round(queriesFolder.Size/1024/1024, 1)) & FormatNumber(Round(queriesFolder.Size/1024/1024, 1), 2, -1) & "MB, <" & queriesFolder.Path & ">")
-'			objFile.WriteLine("[  ] " & Round(queriesFolder.Size/1024/1024, 1) & "MB, <" & queriesFolder.Path & ">")
 			On Error Goto 0
 		End If
 	Next
 	
 	If (hasQueriesProblem) Then
-		objFile.WriteLine("[!!] " & PadNumbers(Round(queriesFolder.Size/1024/1024, 1)) & FormatNumber(Round(queriesFolder.Size/1024/1024, 1), 2, -1) & "MB TOTAL - folders should be cleared and Excel fix may need to be applied")
-'		objFile.WriteLine("[!!] " & queriesFolderTotal & "MB TOTAL - folders should be cleared and Excel fix may need to be applied")
+		objFile.Write("[!!] ")
 	Else
-		objFile.WriteLine("[  ] " & PadNumbers(Round(queriesFolder.Size/1024/1024, 1)) & FormatNumber(Round(queriesFolder.Size/1024/1024, 1), 2, -1) & "MB TOTAL")
-'		objFile.WriteLine("[  ] " & queriesFolderTotal & "MB TOTAL")
+		objFile.Write("[  ] ")
+	End If
+	objFile.WriteLine(PadNumbers(Round(queriesFolder.Size/1024/1024, 1)) & FormatNumber(Round(queriesFolder.Size/1024/1024, 1), 2, -1) & "MB TOTAL")
+	
+	objFile.WriteLine("")
+
+	objFile.WriteLine("RECOMMENDATIONS")
+	objFile.WriteLine("---------------")
+	If (boolServicePackMissing) Then
+		objFile.Write(vbTab & "Operating System is missing latest Service Pack")
+	End If
+	If (boolRemoteStartupItem) Then
+		objFile.Write(vbTab & "Startup item that launches from remote server should be removed")
+	End If
+	If (boolTempFoldersProblem) Then
+		objFile.WriteLine(vbTab & "Temp folders should be cleared")
+	End If
+	If (boolTempInternetFoldersProblem) Then
+		objFile.WriteLine(vbTab & "Temporary Internet Folders should be cleared")
+	End If
+	If (hasQueriesProblem) Then
+		objFile.WriteLine(vbTab & "Queries folders should be cleared and Excel fix may need to be applied")
 	End If
 		
 	SchTasksCommand = "notepad.exe " & strFilename
