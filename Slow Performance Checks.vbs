@@ -1,7 +1,7 @@
 ' Slow Performance Checks.vbs
 ' Author: Alistair McMillan
 ' Start Date: 12 November 2012
-' Version 2.2.2
+' Version 2.3
 ' ----------------------------
 
 Option Explicit
@@ -23,7 +23,7 @@ Dim freePhysicalMemory, objSWbemLocator, objSWbemServices, objItem, colOSItems, 
 	index, strOperatingSystem, strServiceParkMajor, strServiceParkMinor, strCurrentUser, _
 	hasQueriesProblem, tempFolderTotal, temporaryInternetFolderTotal, queriesFolderTotal, _
 	boolRemoteStartupItem, boolTempFoldersProblem, boolTempInternetFoldersProblem, _
-	boolServicePackMissing, DataList, strOutput
+	boolServicePackMissing, DataList, strOutput, pathString
 
 Function PadNumbers(input)
 	Dim output
@@ -238,6 +238,23 @@ Else
 			objFile.WriteLine("[  ] " & Line)
 		End If
 	Loop
+
+	objFile.WriteLine("")
+	
+	objFile.WriteLine("PATH")
+	objFile.WriteLine("----")
+	objFile.WriteLine("")
+
+	Set colItems = objSWbemServices.ExecQuery("Select * from Win32_Environment")
+
+	For Each objItem in colItems
+		If (objItem.Name = "PATH" or objItem.Name = "Path") Then
+			pathString = ""
+			pathString = pathString & "Name: " & objItem.Name & VbCr
+			pathString = pathString & "Variable Value: " & objItem.VariableValue & VbCr
+			objFile.WriteLine(pathString)
+		End If
+	Next
 
 	objFile.WriteLine("")
 	
