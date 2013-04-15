@@ -1,7 +1,7 @@
 ' Slow Performance Checks.vbs
 ' Author: Alistair McMillan
 ' Start Date: 12 November 2012
-' Version 2
+' Version 2.1
 ' ----------------------------
 
 Option Explicit
@@ -22,7 +22,7 @@ Dim freePhysicalMemory, objSWbemLocator, objSWbemServices, objItem, colOSItems, 
 	oExec, Line, servicePackeMajor, servicePackMinor, arrValueNames, arrValueTypes, _
 	index, strOperatingSystem, strServiceParkMajor, strServiceParkMinor, strCurrentUser, _
 	hasQueriesProblem, tempFolderTotal, temporaryInternetFolderTotal, queriesFolderTotal, _
-	boolRemoteStartupItem
+	boolRemoteStartupItem, DataList
 
 Set WshShell = CreateObject("WScript.Shell")
 
@@ -153,6 +153,92 @@ Else
 		End If
 	Next
 
+	objFile.WriteLine("")
+	
+	objFile.WriteLine("RUNNING PROCESSES")
+	objFile.WriteLine("-----------------")
+	
+	' RAM
+	objFile.WriteLine(vbTab & " WORKING   PAGE FILE   PROCESS")
+	objFile.WriteLine(vbTab & " SET (MB), USAGE (MB), NAME         , COMMAND")
+	
+	' Creating disconnected recordset to hold data
+	Const adVarChar = 200
+	Const MaxCharacters = 255
+	Set DataList = CreateObject("ADOR.Recordset")
+	DataList.Fields.Append "WorkingSetSize", adVarChar, MaxCharacters
+	DataList.Fields.Append "PageFileUsage", adVarChar, MaxCharacters
+	DataList.Fields.Append "Name", adVarChar, MaxCharacters
+	DataList.Fields.Append "CommandLine", adVarChar, MaxCharacters
+	DataList.Open
+	
+	' Retrieve list of processes and load into recordset
+	Set colItems = objSWbemServices.ExecQuery("select * from Win32_Process")
+	For Each objItem in colItems
+		DataList.AddNew
+		DataList("WorkingSetSize") = objItem.WorkingSetSize
+		DataList("PageFileUsage") = objItem.PageFileUsage
+		DataList("Name") = objItem.Name
+		' Because command line can sometimes be null and recordsets don't like null values
+	'	If (IsNull(objItem.CommandLine)) Then
+	'		DataList("CommandLine") = "-"
+	'	Else
+	'		DataList("CommandLine") = objItem.CommandLine
+	'	End If
+		DataList.Update
+	Next
+	DataList.Sort = "WorkingSetSize DESC"
+	DataList.MoveFirst
+	Do Until DataList.EOF
+		objFile.Write("[  ]  ")
+		If (Round(DataList.Fields.Item("WorkingSetSize")/1024/1024, 2) < 1000) Then
+			objFile.Write(" ")
+		End If
+		If (Round(DataList.Fields.Item("WorkingSetSize")/1024/1024, 2) < 100) Then
+			objFile.Write(" ")
+		End If
+		If (Round(DataList.Fields.Item("WorkingSetSize")/1024/1024, 2) < 10) Then
+			objFile.Write(" ")
+		End If
+		objFile.Write(FormatNumber(Round(DataList.Fields.Item("WorkingSetSize")/1024/1024, 2), 2, -1))
+		objFile.Write(",    ")
+		If (Round(DataList.Fields.Item("PageFileUsage")/1024/1024, 2) < 1000) Then
+			objFile.Write(" ")
+		End If
+		If (Round(DataList.Fields.Item("PageFileUsage")/1024/1024, 2) < 100) Then
+			objFile.Write(" ")
+		End If
+		If (Round(DataList.Fields.Item("PageFileUsage")/1024/1024, 2) < 10) Then
+			objFile.Write(" ")
+		End If
+		objFile.WriteLine(FormatNumber(Round(DataList.Fields.Item("PageFileUsage")/1024/1024, 2), 2, -1) & ", " & DataList.Fields.Item("Name") & ", " & DataList.Fields.Item("CommandLine") )
+		DataList.MoveNext
+	Loop
+'	For Each objItem in colItems
+'		objFile.Write("[  ]  ")
+'		If (Round(objItem.WorkingSetSize/1024/1024, 2) < 1000) Then
+'			objFile.Write(" ")
+'		End If
+'		If (Round(objItem.WorkingSetSize/1024/1024, 2) < 100) Then
+'			objFile.Write(" ")
+'		End If
+'		If (Round(objItem.WorkingSetSize/1024/1024, 2) < 10) Then
+'			objFile.Write(" ")
+'		End If
+'		objFile.Write(FormatNumber(Round(objItem.WorkingSetSize/1024/1024, 2), 2, -1))
+'		objFile.Write(",    ")
+'		If (Round(objItem.PageFileUsage/1024/1024, 2) < 1000) Then
+'			objFile.Write(" ")
+'		End If
+'		If (Round(objItem.PageFileUsage/1024/1024, 2) < 100) Then
+'			objFile.Write(" ")
+'		End If
+'		If (Round(objItem.PageFileUsage/1024/1024, 2) < 10) Then
+'			objFile.Write(" ")
+'		End If
+'		objFile.WriteLine(FormatNumber(Round(objItem.PageFileUsage/1024/1024, 2), 2, -1) & ", " & objItem.Name & ", " & objItem.CommandLine )
+'	Next
+	
 	objFile.WriteLine("")
 
 	objFile.WriteLine("SCHEDULED TASKS")
