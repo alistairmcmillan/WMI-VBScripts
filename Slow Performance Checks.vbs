@@ -1,7 +1,7 @@
 ' Slow Performance Checks.vbs
 ' Author: Alistair McMillan
 ' Start Date: 12 November 2012
-' Version 2.2
+' Version 2.2.1
 ' ----------------------------
 
 Option Explicit
@@ -362,7 +362,7 @@ Else
 	Next
 
 	If (tempFolderTotal > 1024) Then
-		boolTempProblem = True
+		boolTempFoldersProblem = True
 		objFile.Write("[!!] ")
 	Else
 		objFile.Write("[  ] ")
