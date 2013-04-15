@@ -1,12 +1,8 @@
 ' Slow Performance Checks.vbs
 ' Author: Alistair McMillan
 ' Start Date: 12 November 2012
+' Version 2
 ' ----------------------------
-'
-' 0.2 - 21 January 2013
-' - Added systemprofile to Temp and Temporary Internet Files checks
-' - Added listing of items under Registry Run keys
-'
 
 Option Explicit
 
@@ -24,7 +20,9 @@ Dim freePhysicalMemory, objSWbemLocator, objSWbemServices, objItem, colOSItems, 
 	objFolder, objSubFolders, objSubFolder, queriesFolder, objRegistry, _
 	values, strValue, strValues, strKeyPath, strValueName, SchTasksCommand, _
 	oExec, Line, servicePackeMajor, servicePackMinor, arrValueNames, arrValueTypes, _
-	index
+	index, strOperatingSystem, strServiceParkMajor, strServiceParkMinor, strCurrentUser, _
+	hasQueriesProblem, tempFolderTotal, temporaryInternetFolderTotal, queriesFolderTotal, _
+	boolRemoteStartupItem
 
 Set WshShell = CreateObject("WScript.Shell")
 
@@ -51,84 +49,106 @@ Else
 	Set objFile = objFileSystem.OpenTextFile(strFilename, 8, True)
 
 	objFile.WriteLine("")
-	objFile.WriteLine("==================================================")
-	objFile.WriteLine("==================================================")
+	objFile.WriteLine("======================================================================")
 	objFile.WriteLine("")
-	objFile.WriteLine("Scanned: " & Now)
+	objFile.WriteLine(" >> Slow Performance Checks.vbs - Alistair McMillan")
+	objFile.WriteLine("[  ] Performing tests on " & strMachineName)
+	objFile.WriteLine("[  ] Scan started at " & Now)
 	objFile.WriteLine("")
 
-	' Basic memory info
+	' Get page file sizes
 	Set colOSItems = objSWbemServices.ExecQuery("select * from Win32_OperatingSystem")
 	For Each objItem in colOSItems
-		objFile.WriteLine("Operating System: " & objItem.Caption)
-		objFile.WriteLine("Service Pack Major: " & objItem.ServicePackMajorVersion)
-		objFile.WriteLine("Service Pack Minor: " & objItem.ServicePackMinorVersion)
 		freePhysicalMemory = objItem.FreePhysicalMemory
 		freeSpaceInPagingFiles = objItem.FreeSpaceInPagingFiles
 		sizeStoredInPagingFiles = objItem.SizeStoredInPagingFiles
+		strOperatingSystem = objItem.Caption
+		strServiceParkMajor = objItem.ServicePackMajorVersion
+		strServiceParkMinor = objItem.ServicePackMinorVersion
 	Next
 
 	' Basic info
 	Set colItems = objSWbemServices.ExecQuery("select * from Win32_ComputerSystem")
 	For Each objItem in colItems
-		objFile.WriteLine("Domain: " & objItem.Domain)
-		objFile.WriteLine("SystemName: " & objItem.Name)
-		objFile.WriteLine("Current user: " & objItem.UserName)
-		objFile.WriteLine("")
-		objFile.WriteLine("Free RAM: " & Round(freePhysicalMemory/1024, 1) & " MB")
-		objFile.WriteLine("Total RAM: " & Round(objItem.TotalPhysicalMemory/1024/1024, 1) & " MB")
-		objFile.WriteLine("")
-		objFile.WriteLine("Free Page Files Size: " & Round(freeSpaceInPagingFiles/1024, 1) & " MB")
-		objFile.WriteLine("Total Page Files Size: " & Round(sizeStoredInPagingFiles/1024, 1) & " MB")
+
+		objFile.WriteLine("[  ] Operating System: " & strOperatingSystem)
+		If ((strOperatingSystem = "Microsoft Windows XP Professional") And (strServiceParkMajor < 3)) Then
+			objFile.WriteLine("[!!] Service Pack: " & strServiceParkMajor & "." & strServiceParkMinor)
+		ElseIf ((strOperatingSystem = "Microsoft Windows 2000 Professional") And (strServiceParkMajor < 4)) Then
+			objFile.WriteLine("[!!] Service Pack: " & strServiceParkMajor & "." & strServiceParkMinor)
+		Else
+			objFile.WriteLine("[  ] Service Pack: " & strServiceParkMajor & "." & strServiceParkMinor)
+		End If		
+		
+		objFile.WriteLine("[  ] Domain: " & objItem.Domain )
+		strCurrentUser = objItem.UserName
+		objFile.WriteLine("[  ] User: " & objItem.UserName)
+	Next
+
+	objFile.WriteLine("")
+	
+	' CPU
+	Set colItems = objSWbemServices.ExecQuery("Select * from Win32_Processor")
+	For Each objItem in colItems
+		If ((objItem.LoadPercentage > 90) Or (Round(objItem.CurrentClockSpeed/1000, 1) < 1)) Then
+			objFile.Write("[!!] ")
+		Else
+			objFile.Write("[  ] ")
+		End If		
+		objFile.WriteLine(objItem.DeviceID & " - " & _
+			"Clockspeed: " & Round(objItem.CurrentClockSpeed/1000, 1) & " GHz - " & _ 
+			"Load: " & objItem.LoadPercentage & "% - " & _
+			"Name: " & objItem.Name)
 	Next
 
 	objFile.WriteLine("")
 
+	' RAM/Paging
+	Set colItems = objSWbemServices.ExecQuery("select * from Win32_ComputerSystem")
+	For Each objItem in colItems
+		If (objItem.TotalPhysicalMemory/1024/1024 < 1024) Then
+			objFile.WriteLine("[!!] RAM Total/Free: " & Round(objItem.TotalPhysicalMemory/1024/1024, 1) & "/" & Round(freePhysicalMemory/1024, 1) & " MB")
+		Else
+			objFile.WriteLine("[  ] RAM Total/Free: " & Round(objItem.TotalPhysicalMemory/1024/1024, 1) & "/" & Round(freePhysicalMemory/1024, 1) & " MB")
+		End If
+		objFile.WriteLine("[  ] Page File Total/Free: " & Round(sizeStoredInPagingFiles/1024, 1) & "/" & Round(freeSpaceInPagingFiles/1024, 1) & " MB")
+	Next
 	Set objRegistry = GetObject("winmgmts:\\" & strComputer & "\root\default:StdRegProv")
 	strKeyPath = "SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management"
 	strValueName = "PagingFiles"
 	objRegistry.GetMultiStringValue HKEY_LOCAL_MACHINE, strKeyPath, strValueName, values
 	For Each strValue in values
 		If (IsNull(strValue)) Then
-			objFile.WriteLine("No paging files key")
+			objFile.WriteLine("[!!] No paging files key")
 		Else
 			If (InStr(strValue, " 0 0")) Then
-				objFile.WriteLine("Virtual memory is SYSTEM MANAGED - " & strValue)
+				objFile.WriteLine("[  ] Virtual memory is SYSTEM MANAGED - " & strValue)
 			Else
-				objFile.WriteLine("Virtual memory is NOT system managed - " & strValue)
+				objFile.WriteLine("[!!] Virtual memory is NOT system managed - " & strValue)
 			End If
 		End If
 	Next
 
-	' CPU
-	Set colItems = objSWbemServices.ExecQuery("Select * from Win32_Processor")
-	For Each objItem in colItems
-		objFile.WriteLine("")
-		objFile.WriteLine("Device ID: " & objItem.DeviceID)
-		objFile.WriteLine("Current Clock Speed: " & objItem.CurrentClockSpeed)
-		objFile.WriteLine("Maximum Clock Speed: " & objItem.MaxClockSpeed)
-		objFile.WriteLine("Load Percentage: " & objItem.LoadPercentage)
-		objFile.WriteLine("Address Width: " & objItem.AddressWidth)
-		objFile.WriteLine("Data Width: " & objItem.DataWidth)
-		objFile.WriteLine("Manufacturer: " & objItem.Manufacturer)
-		objFile.WriteLine("Name: " & objItem.Name)
-		objFile.WriteLine("Description: " & objItem.Description)
-	Next
-
+	objFile.WriteLine("")
+	
 	' Lists disks with total/free space
 	Set colItems = objSWbemServices.ExecQuery("select * from Win32_LogicalDisk")
 	For Each objItem in colItems
 		If ("C:" = objItem.Name) Then
-			objFile.WriteLine("")
-			objFile.WriteLine(objItem.Name)
 			If (IsNull(objItem.Size) Or IsNull(objItem.FreeSpace)) Then
-				objFile.WriteLine("Free Space: " & objItem.FreeSpace/1024/1024/1024 & " GB")
-				objFile.WriteLine("Total Space: " & objItem.Size/1024/1024/1024 & " GB")
-				objFile.WriteLine("Percent free: " & objItem.FreeSpace/objItem.Size & " %")
+				If (objItem.FreeSpace/objItem.Size < 10) Then
+					objFile.Write("[!!] ")
+				Else
+					objFile.Write("[  ] ")
+				End If
+				objFile.WriteLine(objItem.Name & " " & objItem.FreeSpace/objItem.Size & " % - Total/Free Space: " & objItem.Size/1024/1024/1024 & " GB / " & objItem.FreeSpace/1024/1024/1024 & " GB")
 			else
-				objFile.WriteLine("Free Space: " & Round(objItem.FreeSpace/1024/1024/1024, 2) & " GB")
-				objFile.WriteLine("Total Space: " & Round(objItem.Size/1024/1024/1024, 2) & " GB")
-				objFile.WriteLine("Percent free: " & Round((objItem.FreeSpace/objItem.Size)*100, 1) & "%")
+				If (Round((objItem.FreeSpace/objItem.Size)*100, 1) < 10) Then
+					objFile.Write("[!!] ")
+				Else
+					objFile.Write("[  ] ")
+				End If
+				objFile.WriteLine(objItem.Name & " " & Round((objItem.FreeSpace/objItem.Size)*100, 1) & " % - " & " Total/Free Space: " & Round(objItem.Size/1024/1024/1024, 2) & " GB / " & Round(objItem.FreeSpace/1024/1024/1024, 2) & " GB ")
 			End If
 		End If
 	Next
@@ -161,9 +181,21 @@ Else
 		Select Case arrValueTypes(index)
 			Case REG_SZ
 				objRegistry.GetStringValue HKEY_LOCAL_MACHINE, strKeyPath, arrValueNames(index), strValue
+				if(InStr(1, strValue, "\\") > 0) Then
+					boolRemoteStartupItem = True
+					objFile.Write("[!!] ")
+				Else
+					objFile.Write("[  ] ")
+				End If
 				objFile.WriteLine arrValueNames(index) & ",  " & strValue
 			Case REG_EXPAND_SZ
 				objRegistry.GetStringValue HKEY_LOCAL_MACHINE, strKeyPath, arrValueNames(index), strValue
+				if(InStr(1, strValue, "\\") > 0) Then
+					boolRemoteStartupItem = True
+					objFile.Write("[!!] ")
+				Else
+					objFile.Write("[  ] ")
+				End If
 				objFile.WriteLine arrValueNames(index) & ",  " & strValue
 			Case REG_BINARY
 				' Should never reach here
@@ -172,7 +204,7 @@ Else
 			Case REG_MULTI_SZ
 				' Should never reach here
 		End Select 
-	Next	
+	Next
 	
 	objFile.WriteLine("")
 	
@@ -181,23 +213,41 @@ Else
 
 	Set objRegistry = GetObject("winmgmts:\\" & strComputer & "\root\default:StdRegProv")
 	strKeyPath = "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
-	objRegistry.EnumValues HKEY_CURRENT_USER, strKeyPath, arrValueNames, arrValueTypes
-	For index=0 To UBound(arrValueNames)
-		Select Case arrValueTypes(index)
-			Case REG_SZ
-				objRegistry.GetStringValue HKEY_CURRENT_USER, strKeyPath, arrValueNames(index), strValue
-				objFile.WriteLine arrValueNames(index) & ",  " & strValue
-			Case REG_EXPAND_SZ
-				objRegistry.GetStringValue HKEY_CURRENT_USER, strKeyPath, arrValueNames(index), strValue
-				objFile.WriteLine arrValueNames(index) & ",  " & strValue
-			Case REG_BINARY
-				' Should never reach here
-			Case REG_DWORD
-				' Should never reach here
-			Case REG_MULTI_SZ
-				' Should never reach here
-		End Select 
-	Next	
+	If (IsNull(strCurrentUser)) Then
+		objFile.WriteLine "No user currently logged in"
+	Else
+		objRegistry.EnumValues HKEY_CURRENT_USER, strKeyPath, arrValueNames, arrValueTypes
+		On Error Resume Next
+		For index=0 To UBound(arrValueNames)
+			Select Case arrValueTypes(index)
+				Case REG_SZ
+					objRegistry.GetStringValue HKEY_CURRENT_USER, strKeyPath, arrValueNames(index), strValue
+					if(InStr(1, strValue, "\\") > 0) Then
+						boolRemoteStartupItem = True
+						objFile.Write("[!!] ")
+					Else
+						objFile.Write("[  ] ")
+					End If
+					objFile.WriteLine arrValueNames(index) & ",  " & strValue
+				Case REG_EXPAND_SZ
+					objRegistry.GetStringValue HKEY_CURRENT_USER, strKeyPath, arrValueNames(index), strValue
+					if(InStr(1, strValue, "\\") > 0) Then
+						boolRemoteStartupItem = True
+						objFile.Write("[!!] ")
+					Else
+						objFile.Write("[  ] ")
+					End If
+					objFile.WriteLine arrValueNames(index) & ",  " & strValue
+				Case REG_BINARY
+					' Should never reach here
+				Case REG_DWORD
+					' Should never reach here
+				Case REG_MULTI_SZ
+					' Should never reach here
+			End Select 
+		Next
+		On Error Goto 0
+	End If
 	
 	objFile.WriteLine("")
 
@@ -208,27 +258,24 @@ Else
 	If objFileSystem.FolderExists("\\" & strComputer & "\c$\windows\temp") Then
 		Set queriesFolder = objFileSystem.GetFolder("\\" & strComputer & "\c$\windows\temp")
 		On Error Resume Next
-		objFile.Write(Round(queriesFolder.Size/1024/1024, 1))
-		objFile.Write(", <" & queriesFolder.Path & ">")
-		objFile.WriteLine(" ")
+		tempFolderTotal = tempFolderTotal + Round(queriesFolder.Size/1024/1024, 1)
+		objFile.WriteLine("[  ] " & Round(queriesFolder.Size/1024/1024, 1) & "MB, <" & queriesFolder.Path & ">")
 		On Error Goto 0
 	End If
 
 	If objFileSystem.FolderExists("\\" & strComputer & "\c$\temp") Then
 		Set queriesFolder = objFileSystem.GetFolder("\\" & strComputer & "\c$\temp")
 		On Error Resume Next
-		objFile.Write(Round(queriesFolder.Size/1024/1024, 1))
-		objFile.Write(", <" & queriesFolder.Path & ">")
-		objFile.WriteLine(" ")
+		tempFolderTotal = tempFolderTotal + Round(queriesFolder.Size/1024/1024, 1)
+		objFile.WriteLine("[  ] " & Round(queriesFolder.Size/1024/1024, 1) & "MB, <" & queriesFolder.Path & ">")
 		On Error Goto 0
 	End If
 
 	If objFileSystem.FolderExists("\\" & strComputer & "\c$\windows\system32\config\systemprofile\local settings\temp") Then
 		Set queriesFolder = objFileSystem.GetFolder("\\" & strComputer & "\c$\windows\system32\config\systemprofile\local settings\temp")
 		On Error Resume Next
-		objFile.Write(Round(queriesFolder.Size/1024/1024, 1))
-		objFile.Write(", <" & queriesFolder.Path & ">")
-		objFile.WriteLine(" ")
+		tempFolderTotal = tempFolderTotal + Round(queriesFolder.Size/1024/1024, 1)
+		objFile.WriteLine("[  ] " & Round(queriesFolder.Size/1024/1024, 1) & "MB, <" & queriesFolder.Path & ">")
 		On Error Goto 0
 	End If
 
@@ -238,13 +285,18 @@ Else
 		If objFileSystem.FolderExists("\\" & strComputer & "\c$\documents and settings\" & objSubFolder.name & "\local settings\temp") Then
 			Set queriesFolder = objFileSystem.GetFolder("\\" & strComputer & "\c$\documents and settings\" & objSubFolder.name & "\local settings\temp")
 			On Error Resume Next
-			objFile.Write(Round(queriesFolder.Size/1024/1024, 1))
-			objFile.Write(", <" & queriesFolder.Path & ">")
-			objFile.WriteLine(" ")
+			tempFolderTotal = tempFolderTotal + Round(queriesFolder.Size/1024/1024, 1)
+			objFile.WriteLine("[  ] " & Round(queriesFolder.Size/1024/1024, 1) & "MB, <" & queriesFolder.Path & ">")
 			On Error Goto 0
 		End If
 	Next
 
+	If (tempFolderTotal > 1024) Then
+		objFile.WriteLine("[!!] " & tempFolderTotal & "MB in Temp Folders - they should be checked and cleared")
+	Else
+		objFile.WriteLine("[  ] " & tempFolderTotal & "MB in Temp Folders - OK")
+	End If
+		
 	objFile.WriteLine("")
 
 	objFile.WriteLine("TEMPORARY INTERNET FOLDERS")
@@ -254,9 +306,8 @@ Else
 	If objFileSystem.FolderExists("\\" & strComputer & "\c$\windows\system32\config\systemprofile\local settings\temporary internet files") Then
 		Set queriesFolder = objFileSystem.GetFolder("\\" & strComputer & "\c$\windows\system32\config\systemprofile\local settings\temporary internet files")
 		On Error Resume Next
-		objFile.Write(Round(queriesFolder.Size/1024/1024, 1))
-		objFile.Write(", <" & queriesFolder.Path & ">")
-		objFile.WriteLine(" ")
+		temporaryInternetFolderTotal = temporaryInternetFolderTotal + Round(queriesFolder.Size/1024/1024, 1)
+		objFile.WriteLine("[  ] " & Round(queriesFolder.Size/1024/1024, 1) & "MB, <" & queriesFolder.Path & ">")
 		On Error Goto 0
 	End If
 
@@ -266,13 +317,18 @@ Else
 		If objFileSystem.FolderExists("\\" & strComputer & "\c$\documents and settings\" & objSubFolder.name & "\local settings\temporary internet files") Then
 			Set queriesFolder = objFileSystem.GetFolder("\\" & strComputer & "\c$\documents and settings\" & objSubFolder.name & "\local settings\temporary internet files")
 			On Error Resume Next
-			objFile.Write(Round(queriesFolder.Size/1024/1024, 1))
-			objFile.Write(", <" & queriesFolder.Path & ">")
-			objFile.WriteLine(" ")
+			temporaryInternetFolderTotal = temporaryInternetFolderTotal + Round(queriesFolder.Size/1024/1024, 1)
+			objFile.WriteLine("[  ] " & Round(queriesFolder.Size/1024/1024, 1) & "MB, <" & queriesFolder.Path & ">")
 			On Error Goto 0
 		End If
 	Next
 
+	If (temporaryInternetFolderTotal > 1024) Then
+		objFile.WriteLine("[!!] " & temporaryInternetFolderTotal & "MB in Temporary Internet Folders - they should be checked and cleared")
+	Else
+		objFile.WriteLine("[  ] " & temporaryInternetFolderTotal & "MB in Temporary Internet Folders - OK")
+	End If
+		
 	objFile.WriteLine("")
 
 	objFile.WriteLine("QUERIES FOLDERS")
@@ -285,13 +341,21 @@ Else
 		If objFileSystem.FolderExists("\\" & strComputer & "\c$\documents and settings\" & objSubFolder.name & "\application data\microsoft\queries") Then
 			Set queriesFolder = objFileSystem.GetFolder("\\" & strComputer & "\c$\documents and settings\" & objSubFolder.name & "\application data\microsoft\queries")
 			On Error Resume Next
-			objFile.Write(Round(queriesFolder.Size/1024/1024, 1))
-			objFile.Write(", <" & queriesFolder.Path & ">")
-			objFile.WriteLine(" ")
+			queriesFolderTotal = queriesFolderTotal + Round(queriesFolder.Size/1024/1024, 1)
+			If (Round(queriesFolder.Size/1024/1024, 1) > 1) Then
+				hasQueriesProblem = True
+			End If
+			objFile.WriteLine("[  ] " & Round(queriesFolder.Size/1024/1024, 1) & "MB, <" & queriesFolder.Path & ">")
 			On Error Goto 0
 		End If
 	Next
 	
+	If (hasQueriesProblem) Then
+		objFile.WriteLine("[!!] " & queriesFolderTotal & "MB TOTAL - folders should be cleared and Excel fix may need to be applied")
+	Else
+		objFile.WriteLine("[  ] " & queriesFolderTotal & "MB TOTAL")
+	End If
+		
 	SchTasksCommand = "notepad.exe " & strFilename
 	WshShell.Exec(SchTasksCommand)
 
