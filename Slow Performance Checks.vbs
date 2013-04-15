@@ -1,7 +1,7 @@
 ' Slow Performance Checks.vbs
 ' Author: Alistair McMillan
 ' Start Date: 12 November 2012
-' Version 2.1.1
+' Version 2.1.2
 ' ----------------------------
 
 Option Explicit
@@ -22,12 +22,15 @@ Dim freePhysicalMemory, objSWbemLocator, objSWbemServices, objItem, colOSItems, 
 	oExec, Line, servicePackeMajor, servicePackMinor, arrValueNames, arrValueTypes, _
 	index, strOperatingSystem, strServiceParkMajor, strServiceParkMinor, strCurrentUser, _
 	hasQueriesProblem, tempFolderTotal, temporaryInternetFolderTotal, queriesFolderTotal, _
-	boolRemoteStartupItem, DataList
+	boolRemoteStartupItem, DataList, strOutput
 
 Function PadNumbers(input)
 	Dim output
-	If (input < 1000) Then
+	If (input < 10000) Then
 		output = output & " "
+	End If
+	If (input < 1000) Then
+		output = output & "  "
 	End If
 	If (input < 100) Then
 		output = output & " "
@@ -389,7 +392,7 @@ Else
 	If (temporaryInternetFolderTotal > 1024) Then
 		objFile.WriteLine("[!!] " & PadNumbers(temporaryInternetFolderTotal) & FormatNumber(temporaryInternetFolderTotal, 2, -1) & "MB in Temporary Internet Folders - they should be checked and cleared")
 	Else
-		objFile.WriteLine("[!!] " & PadNumbers(temporaryInternetFolderTotal) & FormatNumber(temporaryInternetFolderTotal, 2, -1) & "MB in Temporary Internet Folders")
+		objFile.WriteLine("[  ] " & PadNumbers(temporaryInternetFolderTotal) & FormatNumber(temporaryInternetFolderTotal, 2, -1) & "MB in Temporary Internet Folders")
 	End If
 		
 	objFile.WriteLine("")
