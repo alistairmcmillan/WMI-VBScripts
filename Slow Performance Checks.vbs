@@ -1,7 +1,7 @@
 ' Slow Performance Checks.vbs
 ' Author: Alistair McMillan
 ' Start Date: 12 November 2012
-' Version 2.2.1
+' Version 2.2.2
 ' ----------------------------
 
 Option Explicit
@@ -127,11 +127,11 @@ Else
 	Set colItems = objSWbemServices.ExecQuery("select * from Win32_ComputerSystem")
 	For Each objItem in colItems
 		If (objItem.TotalPhysicalMemory/1024/1024 < 1024) Then
-			objFile.WriteLine("[!!] RAM Total/Free: " & Round(objItem.TotalPhysicalMemory/1024/1024, 1) & "/" & Round(freePhysicalMemory/1024, 1) & " MB")
+			objFile.WriteLine("[!!] RAM Free/Total: " & Round(freePhysicalMemory/1024, 1) & "/" & Round(objItem.TotalPhysicalMemory/1024/1024, 1) & " MB")
 		Else
-			objFile.WriteLine("[  ] RAM Total/Free: " & Round(objItem.TotalPhysicalMemory/1024/1024, 1) & "/" & Round(freePhysicalMemory/1024, 1) & " MB")
+			objFile.WriteLine("[  ] RAM Free/Total: " & Round(freePhysicalMemory/1024, 1) & "/" & Round(objItem.TotalPhysicalMemory/1024/1024, 1) & " MB")
 		End If
-		objFile.WriteLine("[  ] Page File Total/Free: " & Round(sizeStoredInPagingFiles/1024, 1) & "/" & Round(freeSpaceInPagingFiles/1024, 1) & " MB")
+		objFile.WriteLine("[  ] Page File Free/Total: " & Round(freeSpaceInPagingFiles/1024, 1) & "/" & Round(sizeStoredInPagingFiles/1024, 1) & " MB")
 	Next
 	Set objRegistry = GetObject("winmgmts:\\" & strComputer & "\root\default:StdRegProv")
 	strKeyPath = "SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management"
@@ -161,14 +161,14 @@ Else
 				Else
 					objFile.Write("[  ] ")
 				End If
-				objFile.WriteLine(objItem.Name & " " & objItem.FreeSpace/objItem.Size & " % FREE - Total/Free Space: " & objItem.Size/1024/1024/1024 & " GB / " & objItem.FreeSpace/1024/1024/1024 & " GB")
+				objFile.WriteLine(objItem.Name & " " & objItem.FreeSpace/objItem.Size & " % FREE - Free/Total Space: "  & objItem.FreeSpace/1024/1024/1024 & " GB / " & objItem.Size/1024/1024/1024& " GB")
 			else
 				If (Round((objItem.FreeSpace/objItem.Size)*100, 1) < 10) Then
 					objFile.Write("[!!] ")
 				Else
 					objFile.Write("[  ] ")
 				End If
-				objFile.WriteLine(objItem.Name & " " & Round((objItem.FreeSpace/objItem.Size)*100, 1) & " % FREE - " & " Total/Free Space: " & Round(objItem.Size/1024/1024/1024, 2) & " GB / " & Round(objItem.FreeSpace/1024/1024/1024, 2) & " GB ")
+				objFile.WriteLine(objItem.Name & " " & Round((objItem.FreeSpace/objItem.Size)*100, 1) & " % FREE - " & " Free/Total Space: " & Round(objItem.FreeSpace/1024/1024/1024, 2) & " GB / " & Round(objItem.Size/1024/1024/1024, 2) & " GB ")
 			End If
 		End If
 	Next
