@@ -1,7 +1,6 @@
-' Slow Performance Checks.vbs
+' Slow Performance Checks.vbs v2.2
 ' Author: Alistair McMillan
 ' Start Date: 12 November 2012
-' Version 2.3
 ' ----------------------------
 
 Option Explicit
@@ -23,7 +22,9 @@ Dim freePhysicalMemory, objSWbemLocator, objSWbemServices, objItem, colOSItems, 
 	index, strOperatingSystem, strServiceParkMajor, strServiceParkMinor, strCurrentUser, _
 	hasQueriesProblem, tempFolderTotal, temporaryInternetFolderTotal, queriesFolderTotal, _
 	boolRemoteStartupItem, boolTempFoldersProblem, boolTempInternetFoldersProblem, _
-	boolServicePackMissing, DataList, strOutput, pathString
+	boolServicePackMissing, DataList, strOutput, pathString, objPrinter, colPrinters, _
+	strPrinterType, boolVirtMemNotSystemManaged, boolDefaultTempProblem, _
+	boolDefaultTempInternetFilesProblem, boolAncientPrinterQueues, boolRemotePathProblem
 
 Function PadNumbers(input)
 	Dim output
@@ -69,7 +70,7 @@ Else
 	objFile.WriteLine("")
 	objFile.WriteLine("======================================================================")
 	objFile.WriteLine("")
-	objFile.WriteLine(" >> Slow Performance Checks.vbs - Alistair McMillan")
+	objFile.WriteLine(" >> Slow Performance Checks.vbs v2.2 - Alistair McMillan")
 	objFile.WriteLine("[  ] Performing tests on " & strMachineName)
 	objFile.WriteLine("[  ] Scan started at " & Now)
 	objFile.WriteLine("")
@@ -144,6 +145,7 @@ Else
 			If (InStr(strValue, " 0 0")) Then
 				objFile.WriteLine("[  ] Virtual memory is SYSTEM MANAGED - " & strValue)
 			Else
+				boolVirtMemNotSystemManaged = True
 				objFile.WriteLine("[!!] Virtual memory is NOT system managed - " & strValue)
 			End If
 		End If
@@ -224,6 +226,20 @@ Else
 	
 	objFile.WriteLine("")
 	
+'	objFile.WriteLine("MAPPED DRIVES")
+'	objFile.WriteLine("-------------")
+'	
+'	Set colItems = objSWbemServices.ExecQuery("Select * from Win32_MappedLogicalDisk")
+'
+'	For Each objItem in colItems
+'		strOutput = strOutput & "Name: " & objItem.Name & vbCr
+'		strOutput = strOutput & "Provider Name: " & objItem.ProviderName & vbCr
+'		Wscript.Echo strOutput
+'		strOutput = ""
+'	Next
+'	
+'	objFile.WriteLine("")
+
 	objFile.WriteLine("SCHEDULED TASKS")
 	objFile.WriteLine("---------------")
 	objFile.WriteLine("")
@@ -249,15 +265,44 @@ Else
 
 	For Each objItem in colItems
 		If (objItem.Name = "PATH" or objItem.Name = "Path") Then
-			pathString = ""
-			pathString = pathString & "Name: " & objItem.Name & VbCr
-			pathString = pathString & "Variable Value: " & objItem.VariableValue & VbCr
-			objFile.WriteLine(pathString)
+			objFile.WriteLine("[  ] Name: " & objItem.Name)
+			If (InStr(objItem.VariableValue,"\\")) Then
+				boolRemotePathProblem = True
+				objFile.Write("[!!] ")
+			Else
+				objFile.Write("[  ] ")
+			End If
+			objFile.WriteLine("Variable Value: " & objItem.VariableValue)
+
 		End If
 	Next
 
 	objFile.WriteLine("")
 	
+	objFile.WriteLine("PRINTERS")
+	objFile.WriteLine("--------")
+	objFile.WriteLine("")
+
+	Set colPrinters = objSWbemServices.ExecQuery("Select * From Win32_Printer")
+		 
+	For Each objPrinter in colPrinters
+		If (InStr(objPrinter.Name, "CORP-FP1") Or InStr(objPrinter.Name, "corp-fp1") Or InStr(objPrinter.Name, "Corp-fp1")) Then
+			boolAncientPrinterQueues = True
+			objFile.Write("[!!] ")	
+		Else
+			objFile.Write("[  ] ")
+		End If
+		If objPrinter.Attributes And 64 Then 
+			strPrinterType = "Local   -- "
+		Else
+			strPrinterType = "Network -- "
+		End If
+		objFile.WriteLine strPrinterType & objPrinter.Name 
+
+	Next
+
+	objFile.WriteLine("")
+
 	objFile.WriteLine("MACHINE STARTUP ITEMS")
 	objFile.WriteLine("---------------------")
 
@@ -341,37 +386,40 @@ Else
 	objFile.WriteLine("TEMP FOLDERS")
 	objFile.WriteLine("------------")
 	objFile.WriteLine("FOLDER SIZE (MB), FOLDER NAME")
-
-	If objFileSystem.FolderExists("\\" & strComputer & "\c$\windows\temp") Then
-		Set queriesFolder = objFileSystem.GetFolder("\\" & strComputer & "\c$\windows\temp")
+	
+	If objFileSystem.FolderExists("\\" & strMachineName & "\c$\windows\temp") Then
+		Set queriesFolder = objFileSystem.GetFolder("\\" & strMachineName & "\c$\windows\temp")
 		On Error Resume Next
 		tempFolderTotal = tempFolderTotal + Round(queriesFolder.Size/1024/1024, 1)
 		objFile.WriteLine("[  ] " & PadNumbers(Round(queriesFolder.Size/1024/1024, 1)) & FormatNumber(Round(queriesFolder.Size/1024/1024, 1), 2, -1) & "MB, <" & queriesFolder.Path & ">")
 		On Error Goto 0
 	End If
 
-	If objFileSystem.FolderExists("\\" & strComputer & "\c$\temp") Then
-		Set queriesFolder = objFileSystem.GetFolder("\\" & strComputer & "\c$\temp")
+	If objFileSystem.FolderExists("\\" & strMachineName & "\c$\temp") Then
+		Set queriesFolder = objFileSystem.GetFolder("\\" & strMachineName & "\c$\temp")
 		On Error Resume Next
 		tempFolderTotal = tempFolderTotal + Round(queriesFolder.Size/1024/1024, 1)
 		objFile.WriteLine("[  ] " & PadNumbers(Round(queriesFolder.Size/1024/1024, 1)) & FormatNumber(Round(queriesFolder.Size/1024/1024, 1), 2, -1) & "MB, <" & queriesFolder.Path & ">")
 		On Error Goto 0
 	End If
 
-	If objFileSystem.FolderExists("\\" & strComputer & "\c$\windows\system32\config\systemprofile\local settings\temp") Then
-		Set queriesFolder = objFileSystem.GetFolder("\\" & strComputer & "\c$\windows\system32\config\systemprofile\local settings\temp")
+	If objFileSystem.FolderExists("\\" & strMachineName & "\c$\windows\system32\config\systemprofile\local settings\temp") Then
+		Set queriesFolder = objFileSystem.GetFolder("\\" & strMachineName & "\c$\windows\system32\config\systemprofile\local settings\temp")
 		On Error Resume Next
 		tempFolderTotal = tempFolderTotal + Round(queriesFolder.Size/1024/1024, 1)
 		objFile.WriteLine("[  ] " & PadNumbers(Round(queriesFolder.Size/1024/1024, 1)) & FormatNumber(Round(queriesFolder.Size/1024/1024, 1), 2, -1) & "MB, <" & queriesFolder.Path & ">")
 		On Error Goto 0
 	End If
 
-	Set objFolder = objFileSystem.GetFolder("\\" & strComputer & "\c$\documents and settings")
+	Set objFolder = objFileSystem.GetFolder("\\" & strMachineName & "\c$\Documents and Settings")
 	Set objSubFolders = objFolder.SubFolders
 	For Each objSubFolder in objSubFolders
-		If objFileSystem.FolderExists("\\" & strComputer & "\c$\documents and settings\" & objSubFolder.name & "\local settings\temp") Then
-			Set queriesFolder = objFileSystem.GetFolder("\\" & strComputer & "\c$\documents and settings\" & objSubFolder.name & "\local settings\temp")
+		If objFileSystem.FolderExists("\\" & strMachineName & "\c$\documents and settings\" & objSubFolder.name & "\local settings\temp") Then
+			Set queriesFolder = objFileSystem.GetFolder("\\" & strMachineName & "\c$\documents and settings\" & objSubFolder.name & "\local settings\temp")
 			On Error Resume Next
+			If (InStr(objSubFolder.name, "Default User")) And (Round(queriesFolder.Size/1024/1024, 1) > 10) Then
+				boolDefaultTempProblem = True
+			End If
 			tempFolderTotal = tempFolderTotal + Round(queriesFolder.Size/1024/1024, 1)
 			objFile.WriteLine("[  ] " & PadNumbers(Round(queriesFolder.Size/1024/1024, 1)) & FormatNumber(Round(queriesFolder.Size/1024/1024, 1), 2, -1) & "MB, <" & queriesFolder.Path & ">")
 			On Error Goto 0
@@ -392,20 +440,23 @@ Else
 	objFile.WriteLine("--------------------------")
 	objFile.WriteLine("FOLDER SIZE (MB), FOLDER NAME")
 
-	If objFileSystem.FolderExists("\\" & strComputer & "\c$\windows\system32\config\systemprofile\local settings\temporary internet files") Then
-		Set queriesFolder = objFileSystem.GetFolder("\\" & strComputer & "\c$\windows\system32\config\systemprofile\local settings\temporary internet files")
+	If objFileSystem.FolderExists("\\" & strMachineName & "\c$\windows\system32\config\systemprofile\local settings\temporary internet files") Then
+		Set queriesFolder = objFileSystem.GetFolder("\\" & strMachineName & "\c$\windows\system32\config\systemprofile\local settings\temporary internet files")
 		On Error Resume Next
 		temporaryInternetFolderTotal = temporaryInternetFolderTotal + Round(queriesFolder.Size/1024/1024, 1)
 		objFile.WriteLine("[  ] " & PadNumbers(Round(queriesFolder.Size/1024/1024, 1)) & FormatNumber(Round(queriesFolder.Size/1024/1024, 1), 2, -1) & "MB, <" & queriesFolder.Path & ">")
 		On Error Goto 0
 	End If
 
-	Set objFolder = objFileSystem.GetFolder("\\" & strComputer & "\C$\documents and settings")
+	Set objFolder = objFileSystem.GetFolder("\\" & strMachineName & "\C$\documents and settings")
 	Set objSubFolders = objFolder.SubFolders
 	For Each objSubFolder in objSubFolders
-		If objFileSystem.FolderExists("\\" & strComputer & "\c$\documents and settings\" & objSubFolder.name & "\local settings\temporary internet files") Then
-			Set queriesFolder = objFileSystem.GetFolder("\\" & strComputer & "\c$\documents and settings\" & objSubFolder.name & "\local settings\temporary internet files")
+		If objFileSystem.FolderExists("\\" & strMachineName & "\c$\documents and settings\" & objSubFolder.name & "\local settings\temporary internet files") Then
+			Set queriesFolder = objFileSystem.GetFolder("\\" & strMachineName & "\c$\documents and settings\" & objSubFolder.name & "\local settings\temporary internet files")
 			On Error Resume Next
+			If (InStr(objSubFolder.name, "Default User")) And (Round(queriesFolder.Size/1024/1024, 1) > 10) Then
+				boolDefaultTempInternetFilesProblem = True
+			End If
 			temporaryInternetFolderTotal = temporaryInternetFolderTotal + Round(queriesFolder.Size/1024/1024, 1)
 			objFile.WriteLine("[  ] " & PadNumbers(Round(queriesFolder.Size/1024/1024, 1)) & FormatNumber(Round(queriesFolder.Size/1024/1024, 1), 2, -1) & "MB, <" & queriesFolder.Path & ">")
 			On Error Goto 0
@@ -426,11 +477,11 @@ Else
 	objFile.WriteLine("---------------")
 	objFile.WriteLine("FOLDER SIZE (MB), FOLDER NAME")
 
-	Set objFolder = objFileSystem.GetFolder("\\" & strComputer & "\C$\documents and settings")
+	Set objFolder = objFileSystem.GetFolder("\\" & strMachineName & "\C$\documents and settings")
 	Set objSubFolders = objFolder.SubFolders
 	For Each objSubFolder in objSubFolders
-		If objFileSystem.FolderExists("\\" & strComputer & "\c$\documents and settings\" & objSubFolder.name & "\application data\microsoft\queries") Then
-			Set queriesFolder = objFileSystem.GetFolder("\\" & strComputer & "\c$\documents and settings\" & objSubFolder.name & "\application data\microsoft\queries")
+		If objFileSystem.FolderExists("\\" & strMachineName & "\c$\documents and settings\" & objSubFolder.name & "\application data\microsoft\queries") Then
+			Set queriesFolder = objFileSystem.GetFolder("\\" & strMachineName & "\c$\documents and settings\" & objSubFolder.name & "\application data\microsoft\queries")
 			On Error Resume Next
 			queriesFolderTotal = queriesFolderTotal + Round(queriesFolder.Size/1024/1024, 1)
 			If (Round(queriesFolder.Size/1024/1024, 1) > 1) Then
@@ -453,21 +504,39 @@ Else
 	objFile.WriteLine("RECOMMENDATIONS")
 	objFile.WriteLine("---------------")
 	If (boolServicePackMissing) Then
-		objFile.Write(vbTab & "Operating System is missing latest Service Pack")
+		objFile.WriteLine(vbTab & " Install missing Service Pack")
+	End If
+	If (boolVirtMemNotSystemManaged) Then
+		objFile.WriteLine(vbTab & " Change Virtual Memory to System Managed")
 	End If
 	If (boolRemoteStartupItem) Then
-		objFile.Write(vbTab & "Startup item that launches from remote server should be removed")
+		objFile.WriteLine(vbTab & " Remove Startup item that launches from remote server")
+	End If
+	if (boolRemotePathProblem) Then
+		objFile.WriteLine(vbTab & " System path has a remote path, this may cause slowdown")
+	End If
+	If (boolAncientPrinterQueues) Then
+		objFile.WriteLine(vbTab & " Remove any printers queues that are hosted on CORP-FP1")
 	End If
 	If (boolTempFoldersProblem) Then
-		objFile.WriteLine(vbTab & "Temp folders should be cleared")
+		objFile.WriteLine(vbTab & " Clear Temp folders")
+	End If
+	If (boolDefaultTempProblem) Then
+		objFile.WriteLine(vbTab & " Clear Default User profile's Temp folder")
 	End If
 	If (boolTempInternetFoldersProblem) Then
-		objFile.WriteLine(vbTab & "Temporary Internet Folders should be cleared")
+		objFile.WriteLine(vbTab & " Clear Temporary Internet Folders")
+	End If
+	If (boolDefaultTempInternetFilesProblem) Then
+		objFile.WriteLine(vbTab & " Clear Default User profile's Temporary Internet Files folder")
 	End If
 	If (hasQueriesProblem) Then
-		objFile.WriteLine(vbTab & "Queries folders should be cleared and Excel fix may need to be applied")
+		objFile.WriteLine(vbTab & " Clear Queries folders and Excel fix may need to be applied")
 	End If
 		
+	objFile.WriteLine("")
+	objFile.WriteLine("[  ] Scan finished at " & Now)
+
 	SchTasksCommand = "notepad.exe " & strFilename
 	WshShell.Exec(SchTasksCommand)
 
