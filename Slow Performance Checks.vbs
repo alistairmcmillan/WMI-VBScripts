@@ -1,4 +1,4 @@
-' Slow Performance Checks.vbs v2.2
+' Slow Performance Checks.vbs v2.3
 ' Author: Alistair McMillan
 ' Start Date: 12 November 2012
 ' ----------------------------
@@ -24,7 +24,8 @@ Dim freePhysicalMemory, objSWbemLocator, objSWbemServices, objItem, colOSItems, 
 	boolRemoteStartupItem, boolTempFoldersProblem, boolTempInternetFoldersProblem, _
 	boolServicePackMissing, DataList, strOutput, pathString, objPrinter, colPrinters, _
 	strPrinterType, boolVirtMemNotSystemManaged, boolDefaultTempProblem, _
-	boolDefaultTempInternetFilesProblem, boolAncientPrinterQueues, boolRemotePathProblem
+	boolDefaultTempInternetFilesProblem, boolAncientPrinterQueues, boolRemotePathProblem, _
+	strIPAddress, strLastBootUpTime, boolNeedsReboot, boolWindows2000
 
 Function PadNumbers(input)
 	Dim output
@@ -43,6 +44,14 @@ Function PadNumbers(input)
 	PadNumbers = output
 End Function
 
+' From http://www.activexperts.com/admin/scripts/vbscript/0360/
+Function WMIDateStringToDate(dtmBootup)
+    WMIDateStringToDate = CDate(Mid(dtmBootup, 5, 2) & "/" & _
+        Mid(dtmBootup, 7, 2) & "/" & Left(dtmBootup, 4) _
+            & " " & Mid (dtmBootup, 9, 2) & ":" & _
+                Mid(dtmBootup, 11, 2) & ":" & Mid(dtmBootup,13, 2))
+End Function
+
 Set WshShell = CreateObject("WScript.Shell")
 
 strComputer = InputBox("Enter full computer name (i.e. SWSA29565) or IP address")
@@ -57,10 +66,15 @@ Else
 	Set objSWbemServices = GetObject( "winmgmts://" & strComputer & "/root/cimv2" )
 	objSWbemServices.Security_.ImpersonationLevel = 3
 
-	' Get machine name to user for filename
+	' Get machine name just in case the user is using . for testing
 	Set colItems = objSWbemServices.ExecQuery("select * from Win32_ComputerSystem")
 	For Each objItem in colItems
 		strMachineName = objItem.Name
+	Next
+	
+	Set colItems = objSWbemServices.ExecQuery ("SELECT IPAddress FROM Win32_NetworkAdapterConfiguration WHERE IPEnabled='True'")
+	For Each objItem In colItems
+		strIPAddress = Join(objItem.IPAddress, ",")
 	Next
 
 	strFilename = strMachineName + " slow performance checks.txt"
@@ -70,8 +84,8 @@ Else
 	objFile.WriteLine("")
 	objFile.WriteLine("======================================================================")
 	objFile.WriteLine("")
-	objFile.WriteLine(" >> Slow Performance Checks.vbs v2.2 - Alistair McMillan")
-	objFile.WriteLine("[  ] Performing tests on " & strMachineName)
+	objFile.WriteLine(" >> Slow Performance Checks.vbs v2.3 - Alistair McMillan")
+	objFile.WriteLine("[  ] Performing tests on " & strMachineName & " - " & strIPAddress)
 	objFile.WriteLine("[  ] Scan started at " & Now)
 	objFile.WriteLine("")
 
@@ -84,13 +98,19 @@ Else
 		strOperatingSystem = objItem.Caption
 		strServiceParkMajor = objItem.ServicePackMajorVersion
 		strServiceParkMinor = objItem.ServicePackMinorVersion
+		strLastBootUpTime = WMIDateStringToDate(objItem.LastBootUpTime)
 	Next
 
 	' Basic info
 	Set colItems = objSWbemServices.ExecQuery("select * from Win32_ComputerSystem")
 	For Each objItem in colItems
 
-		objFile.WriteLine("[  ] Operating System: " & strOperatingSystem)
+		If (strOperatingSystem = "Microsoft Windows 2000 Professional") Then
+			boolWindows2000 = True
+			objFile.WriteLine("[!!] Operating System: " & strOperatingSystem)
+		Else
+			objFile.WriteLine("[  ] Operating System: " & strOperatingSystem)
+		End If
 		If ((strOperatingSystem = "Microsoft Windows XP Professional") And (strServiceParkMajor < 3)) Then
 			boolServicePackMissing = True
 			objFile.WriteLine("[!!] Service Pack: " & strServiceParkMajor & "." & strServiceParkMinor)
@@ -102,6 +122,12 @@ Else
 		End If		
 		
 		objFile.WriteLine("[  ] Domain: " & objItem.Domain )
+		If (DateDiff("d", strLastBootUpTime, Now) > 3) Then
+			boolNeedsReboot = True
+			objFile.WriteLine("[!!] Last Boot Up Time: " & strLastBootUpTime )
+		Else
+			objFile.WriteLine("[  ] Last Boot Up Time: " & strLastBootUpTime )
+		End If
 		strCurrentUser = objItem.UserName
 		objFile.WriteLine("[  ] User: " & objItem.UserName)
 	Next
@@ -138,18 +164,18 @@ Else
 	strKeyPath = "SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management"
 	strValueName = "PagingFiles"
 	objRegistry.GetMultiStringValue HKEY_LOCAL_MACHINE, strKeyPath, strValueName, values
-	For Each strValue in values
-		If (IsNull(strValue)) Then
-			objFile.WriteLine("[!!] No paging files key")
-		Else
+	If (IsNull(values)) Then
+		objFile.WriteLine("[!!] No paging files key")
+	Else
+		For Each strValue in values
 			If (InStr(strValue, " 0 0")) Then
 				objFile.WriteLine("[  ] Virtual memory is SYSTEM MANAGED - " & strValue)
 			Else
 				boolVirtMemNotSystemManaged = True
 				objFile.WriteLine("[!!] Virtual memory is NOT system managed - " & strValue)
 			End If
-		End If
-	Next
+		Next
+	End If
 
 	objFile.WriteLine("")
 	
@@ -202,11 +228,15 @@ Else
 		DataList("WorkingSetSize") = CDbl(objItem.WorkingSetSize)
 		DataList("PageFileUsage") = CDbl(objItem.PageFileUsage)
 		DataList("Name") = objItem.Name
-		' Because command line can sometimes be null and recordsets don't like null values
-		If (IsNull(objItem.CommandLine)) Then
-			DataList("CommandLine") = "-"
+		' Because Windows 2000 doesn't return command line for processes
+		If (boolWindows2000) Then
 		Else
-			DataList("CommandLine") = objItem.CommandLine
+			' Because command line can sometimes be null and recordsets don't like null values
+			If (IsNull(objItem.CommandLine)) Then
+				DataList("CommandLine") = "-"
+			Else
+				DataList("CommandLine") = objItem.CommandLine
+			End If
 		End If
 		DataList.Update
 	Next
@@ -220,7 +250,12 @@ Else
 		objFile.Write(",    ")
 
 		objFile.Write(PadNumbers(Round(DataList.Fields.Item("PageFileUsage")/1024/1024, 2)))
-		objFile.WriteLine(FormatNumber(Round(DataList.Fields.Item("PageFileUsage")/1024/1024, 2), 2, -1) & ", " & DataList.Fields.Item("Name") & ", " & DataList.Fields.Item("CommandLine") )
+		objFile.Write(FormatNumber(Round(DataList.Fields.Item("PageFileUsage")/1024/1024, 2), 2, -1) & ", " & DataList.Fields.Item("Name"))
+		If (boolWindows2000) Then
+		Else
+			objFile.Write(", " & DataList.Fields.Item("CommandLine") )
+		End If
+		objFile.WriteLine("")
 		DataList.MoveNext
 	Loop
 	
@@ -313,7 +348,7 @@ Else
 		Select Case arrValueTypes(index)
 			Case REG_SZ
 				objRegistry.GetStringValue HKEY_LOCAL_MACHINE, strKeyPath, arrValueNames(index), strValue
-				if(InStr(1, strValue, "\\") > 0) Then
+				if(InStr(1, strValue, "\\") = 1) Then
 					boolRemoteStartupItem = True
 					objFile.Write("[!!] ")
 				Else
@@ -322,7 +357,7 @@ Else
 				objFile.WriteLine arrValueNames(index) & ",  " & strValue
 			Case REG_EXPAND_SZ
 				objRegistry.GetStringValue HKEY_LOCAL_MACHINE, strKeyPath, arrValueNames(index), strValue
-				if(InStr(1, strValue, "\\") > 0) Then
+				if(InStr(1, strValue, "\\") = 1) Then
 					boolRemoteStartupItem = True
 					objFile.Write("[!!] ")
 				Else
@@ -354,7 +389,7 @@ Else
 			Select Case arrValueTypes(index)
 				Case REG_SZ
 					objRegistry.GetStringValue HKEY_CURRENT_USER, strKeyPath, arrValueNames(index), strValue
-					if(InStr(1, strValue, "\\") > 0) Then
+					if(InStr(1, strValue, "\\") = 1) Then
 						boolRemoteStartupItem = True
 						objFile.Write("[!!] ")
 					Else
@@ -363,7 +398,7 @@ Else
 					objFile.WriteLine arrValueNames(index) & ",  " & strValue
 				Case REG_EXPAND_SZ
 					objRegistry.GetStringValue HKEY_CURRENT_USER, strKeyPath, arrValueNames(index), strValue
-					if(InStr(1, strValue, "\\") > 0) Then
+					if(InStr(1, strValue, "\\") = 1) Then
 						boolRemoteStartupItem = True
 						objFile.Write("[!!] ")
 					Else
@@ -503,11 +538,17 @@ Else
 
 	objFile.WriteLine("RECOMMENDATIONS")
 	objFile.WriteLine("---------------")
+	If (boolWindows2000) Then
+		objFile.WriteLine(vbTab & " Machine is running Windows 2000 - unsupported by Microsoft")
+	End If
 	If (boolServicePackMissing) Then
 		objFile.WriteLine(vbTab & " Install missing Service Pack")
 	End If
 	If (boolVirtMemNotSystemManaged) Then
 		objFile.WriteLine(vbTab & " Change Virtual Memory to System Managed")
+	End If
+	If (boolNeedsReboot) Then
+		objFile.WriteLine(vbTab & " Reboot machine - hasn't been rebooted for " & DateDiff("d", strLastBootUpTime, Now) & " days.")
 	End If
 	If (boolRemoteStartupItem) Then
 		objFile.WriteLine(vbTab & " Remove Startup item that launches from remote server")
