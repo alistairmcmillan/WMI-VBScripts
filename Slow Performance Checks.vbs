@@ -1,4 +1,4 @@
-' Slow Performance Checks.vbs v2.3
+' Slow Performance Checks.vbs v2.4
 ' Author: Alistair McMillan
 ' Start Date: 12 November 2012
 ' ----------------------------
@@ -532,8 +532,8 @@ Else
 	Else
 		objFile.Write("[  ] ")
 	End If
-	objFile.WriteLine(PadNumbers(Round(queriesFolder.Size/1024/1024, 1)) & FormatNumber(Round(queriesFolder.Size/1024/1024, 1), 2, -1) & "MB TOTAL")
-	
+	objFile.WriteLine(PadNumbers(queriesFolderTotal) & FormatNumber(queriesFolderTotal, 2, -1) & "MB TOTAL")
+
 	objFile.WriteLine("")
 
 	objFile.WriteLine("RECOMMENDATIONS")
