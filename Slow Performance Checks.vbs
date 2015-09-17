@@ -84,7 +84,7 @@ Else
 	objFile.WriteLine("")
 	objFile.WriteLine("======================================================================")
 	objFile.WriteLine("")
-	objFile.WriteLine(" >> Slow Performance Checks.vbs v2.3 - Alistair McMillan")
+	objFile.WriteLine(" >> Slow Performance Checks.vbs v2.4 - Alistair McMillan")
 	objFile.WriteLine("[  ] Performing tests on " & strMachineName & " - " & strIPAddress)
 	objFile.WriteLine("[  ] Scan started at " & Now)
 	objFile.WriteLine("")
