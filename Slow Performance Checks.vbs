@@ -120,7 +120,7 @@ For Each objItem in colItems
 	Else
 		objFile.WriteLine("[  ] Service Pack: " & strServiceParkMajor & "." & strServiceParkMinor)
 	End If		
-	
+
 	objFile.WriteLine("[  ] Domain: " & objItem.Domain )
 	If (DateDiff("d", strLastBootUpTime, Now) > 3) Then
 		boolNeedsReboot = True
@@ -308,7 +308,6 @@ For Each objItem in colItems
 			objFile.Write("[  ] ")
 		End If
 		objFile.WriteLine("Variable Value: " & objItem.VariableValue)
-
 	End If
 Next
 
@@ -319,7 +318,7 @@ objFile.WriteLine("--------")
 objFile.WriteLine("")
 
 Set colPrinters = objSWbemServices.ExecQuery("Select * From Win32_Printer")
-	 
+
 For Each objPrinter in colPrinters
 	If (InStr(objPrinter.Name, "CORP-FP1") Or InStr(objPrinter.Name, "corp-fp1") Or InStr(objPrinter.Name, "Corp-fp1")) Then
 		boolAncientPrinterQueues = True
@@ -333,7 +332,6 @@ For Each objPrinter in colPrinters
 		strPrinterType = "Network -- "
 	End If
 	objFile.WriteLine strPrinterType & objPrinter.Name 
-
 Next
 
 objFile.WriteLine("")
@@ -468,7 +466,7 @@ Else
 	objFile.Write("[  ] ")
 End If
 objFile.WriteLine(PadNumbers(tempFolderTotal) & FormatNumber(tempFolderTotal, 2, -1) & "MB TOTAL")
-	
+
 objFile.WriteLine("")
 
 objFile.WriteLine("TEMPORARY INTERNET FOLDERS")
@@ -505,7 +503,7 @@ Else
 	objFile.Write("[  ] ")
 End If
 objFile.WriteLine(PadNumbers(temporaryInternetFolderTotal) & FormatNumber(temporaryInternetFolderTotal, 2, -1) & "MB TOTAL")
-	
+
 objFile.WriteLine("")
 
 objFile.WriteLine("QUERIES FOLDERS")
@@ -574,11 +572,11 @@ End If
 If (hasQueriesProblem) Then
 	objFile.WriteLine(vbTab & " Clear Queries folders and Excel fix may need to be applied")
 End If
-	
+
 objFile.WriteLine("")
 objFile.WriteLine("[  ] Scan finished at " & Now)
 
 SchTasksCommand = "notepad.exe " & strFilename
 WshShell.Exec(SchTasksCommand)
-	
+
 Wscript.Quit
