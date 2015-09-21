@@ -1,4 +1,4 @@
-' Slow Performance Checks.vbs v2.4
+' Slow XP Performance Checks.vbs v2.4
 ' Author: Alistair McMillan
 ' Start Date: 12 November 2012
 ' ----------------------------
